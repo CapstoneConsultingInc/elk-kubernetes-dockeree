@@ -1,0 +1,54 @@
+---
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: test
+  namespace: elk
+  labels:
+    app: etest
+    stack: logging
+spec:
+  storageClassName: nfs-test
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 1G
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: write
+  namespace: elk
+spec:
+  template:
+    metadata:
+      name: write
+    spec:
+      containers:
+      - name: write
+        image: ubuntu:xenial
+        command: ["dd","if=/dev/zero","of=/mnt/pv/test.img","bs=1G","count=1","oflag=dsync"]
+        volumeMounts:
+        - mountPath: "/mnt/pv"
+          name: test-volume
+      volumes:
+      - name: test-volume
+        persistentVolumeClaim:
+          claimName: test
+      restartPolicy: Never
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: test
+spec:
+  storageClassName: nfs-test
+  capacity:
+    storage: 10Gi
+  accessModes:
+  - ReadWriteMany
+  nfs:
+    path: /mnt/pvdata
+    server: 172.31.43.227

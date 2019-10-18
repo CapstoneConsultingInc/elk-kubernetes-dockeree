@@ -1,0 +1,270 @@
+---
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRole
+metadata:
+  name: elasticsearch
+  labels:
+    app: elasticsearch
+    stack: logging
+rules:
+- apiGroups:
+  - extensions
+  resources:
+  - podsecuritypolicies
+  resourceNames:
+  - elasticsearch
+  verbs:
+  - use
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1beta1
+metadata:
+  name: elasticsearch
+  labels:
+    app: elasticsearch
+    stack: logging
+subjects:
+- kind: ServiceAccount
+  name: elasticsearch
+  namespace: elk
+roleRef:
+  kind: ClusterRole
+  name: elasticsearch
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: elasticsearch
+  namespace: elk
+  labels:
+    app: elasticsearch
+    stack: logging
+---
+apiVersion: extensions/v1beta1
+kind: PodSecurityPolicy
+metadata:
+  name: elasticsearch
+  labels:
+    app: elasticsearch
+    stack: logging
+spec:
+  fsGroup:
+    rule: RunAsAny
+  privileged: true
+  runAsUser:
+    rule: RunAsAny
+  seLinux:
+    rule: RunAsAny
+  allowedCapabilities:
+  - 'IPC_LOCK'
+  - 'SYS_RESOURCE'
+  supplementalGroups:
+    rule: RunAsAny
+  volumes:
+  - '*'
+  hostPID: true
+  hostIPC: true
+  hostNetwork: true
+  hostPorts:
+  - min: 1
+    max: 65536
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: elasticsearch
+  namespace: elk
+  labels:
+    app: elasticsearch
+    stack: logging
+data:
+  elasticsearch.yml: |
+    cluster.name: full-stack-cluster
+    cluster.initial_master_nodes:
+      - elasticsearch
+    node.name: node-1
+    path.data: /usr/share/elasticsearch/data
+    http:
+      host: 0.0.0.0
+      port: 9200
+    bootstrap.memory_lock: true
+    network.host: 0.0.0.0
+    transport.host: localhost
+    transport.tcp.port: 9300
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: elasticsearch
+  namespace: elk
+  labels:
+    app: elasticsearch
+    stack: logging
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: elasticsearch
+        stack: logging
+    spec:
+      serviceAccountName: elasticsearch
+      initContainers:
+      - name: set-vm-max-map-count
+        image: busybox
+        imagePullPolicy: IfNotPresent
+        command: ['sysctl', '-w', 'vm.max_map_count=262144']
+        securityContext:
+          privileged: true
+      - name: volume-mount-hack
+        image: busybox
+        imagePullPolicy: IfNotPresent
+        command: ["sh", "-c", "chown -R 1000:100 /usr/share/elasticsearch/data"]
+        volumeMounts:
+        - name: data
+          mountPath: /usr/share/elasticsearch/data
+      containers:
+      - name: elasticsearch
+        image: elasticsearch:7.3.2
+        imagePullPolicy: IfNotPresent
+        env:
+#        - name: cluster.initial_master_nodes
+#          value: elasticsearch
+        - name: discovery.type
+          value: single-node
+          # ES_MEM_LIMIT=2g
+          # ES_JVM_HEAP=1024m
+        ports:
+        - containerPort: 9200
+        resources:
+          limits:
+            memory: "2147483648"
+        volumeMounts:
+        - name: config
+          mountPath: /usr/share/elasticsearch/elasticsearch.yml
+          subPath: elasticsearch.yml
+        - name: data
+          mountPath: /usr/share/elasticsearch/data
+      # Allow non-root user to access PersistentVolume
+      securityContext:
+        fsGroup: 1000
+      restartPolicy: Always
+      volumes:
+      - name: config
+        configMap:
+          name: elasticsearch
+      - name: data
+        persistentVolumeClaim:
+          claimName: elasticsearch
+      # - name: data
+      #   hostPath:
+      #     path: /srv/elasticsearch-data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: elasticsearch
+  namespace: elk
+  labels:
+    app: elasticsearch
+    stack: logging
+spec:
+  storageClassName: nfs
+  accessModes:
+  - ReadWriteMany
+  resources:
+    requests:
+      storage: 5G
+#---
+#apiVersion: v1
+#kind: Service
+#metadata:
+#  name: elasticsearch
+#  namespace: elk
+#  labels:
+#    app: elasticsearch
+#    stack: logging
+#spec:
+#  type: NodePort
+#  ports:
+#  - name: "api"
+#    port: 9200
+#    nodePort: 32920
+#    targetPort: 9200
+#  selector:
+#    app: elasticsearch
+#    stack: logging
+#---
+#apiVersion: v1
+#kind: Service
+#metadata:
+#  name: elasticsearch-int
+#  namespace: elk
+#  labels:
+#    app: elasticsearch-int
+#    stack: logging
+#spec:
+#  type: ClusterIP
+#  ports:
+#  - name: "api"
+#    port: 9200
+#    targetPort: 9200
+#  selector:
+#    app: elasticsearch
+#    stack: logging
+#---
+
+########################################################################################################################################################################################
+# Create external Service (NodePort) listening on port 33200 which will redirect to the Elasticsearch server API port 9200.
+########################################################################################################################################################################################
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: elasticsearch
+  namespace: elk
+  labels:
+    app: elasticsearch
+    stack: logging
+spec:
+  type: NodePort
+  selector:
+    app: elasticsearch
+    stack: logging
+  ports:
+    - port: 9200
+      name: web
+      protocol: TCP
+      nodePort: 33200
+---
+########################################################################################################################################################################################
+# Create an internal ClusterIP Service for the Elasticsearch server listening on ports 9200 and 9330 redirects to the Elasticsearch containers on port 9200 and 9300.
+########################################################################################################################################################################################
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: elasticsearch-int
+  namespace: elk
+  labels:
+    app: elasticsearch
+    stack: logging
+spec:
+  type: ClusterIP
+  selector:
+    app: elasticsearch
+    stack: logging
+  ports:
+    - protocol: TCP
+      name: http
+      port: 9200
+      targetPort: 9200
+    - protocol: TCP
+      name: transport
+      port: 9300
+      targetPort: 9300
+---

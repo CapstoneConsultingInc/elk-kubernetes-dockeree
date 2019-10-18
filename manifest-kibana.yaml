@@ -1,0 +1,147 @@
+---
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRoleBinding
+metadata:
+  name: kibana
+subjects:
+- kind: ServiceAccount
+  name: kibana
+  namespace: kube-system
+roleRef:
+  kind: ClusterRole
+  name: kibana
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRole
+metadata:
+  name: kibana
+  labels:
+    k8s-app: kibana
+rules:
+- apiGroups: [""] # "" indicates the core API group
+  resources:
+  - namespaces
+  - pods
+  - secrets
+  verbs:
+  - get
+  - watch
+  - list
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  labels:
+    app.kubernetes.io/name: kibana
+    app.kubernetes.io/version: v1.8.0
+  name: kibana
+  namespace: elk
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kibana.yml
+  namespace: elk
+  labels:
+    app: kibana
+    stack: logging
+data:
+  kibana.yml: |
+    server:
+      name: "kibana"
+      port: 5601
+    elasticsearch.hosts: "http://elasticsearch-int:9200"
+    elasticsearch.url: "http://elasticsearch-int:9200/"
+    elasticsearch.pingTimeout: 5000
+    elasticsearch.requestTimeout: 5000
+#    elasticsearch.sniffOnConnectionFault: true
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: kibana
+  namespace: elk
+  labels:
+    app: kibana
+    stack: logging
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: kibana
+        stack: logging
+    spec:
+      # FIXME
+      # healthcheck + resources
+      serviceAccountName: kibana
+      containers:
+      - name: kibana
+        image: kibana:7.3.2
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: ELASTICSEARCH_PASSWORD
+          value: changeme
+        - name: ELASTICSEARCH_HOSTS
+          value: 'http://elasticsearch-int:9200'
+        - name: ELASTICSEARCH_URL
+          value: 'http://elasticsearch-int:9200'
+        - name: 'SERVER_NAME'
+          value: 'kibana'
+        - name: 'ELASTICSEARCH_HOSTS'
+          value: 'http://elasticsearch:9200'
+        - name: 'ELASTICSEARCH_USERNAME'
+          value: 'elastic'
+        - name: 'ELASTICSEARCH_PASSWORD'
+          valueFrom:
+            secretKeyRef:
+              name: elastic-credentials
+              key: elastic-password
+        - name: 'ELASTICSEARCH_REQUESTTIMEOUT'
+          value: '5000'
+        ports:
+        - containerPort: 5601
+        resources: {}
+      restartPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kibana
+  namespace: elk
+  labels:
+    app: kibana
+    stack: logging
+spec:
+  type: NodePort
+  ports:
+  - name: "ui"
+    port: 5601
+    nodePort: 33045
+    targetPort: 5601
+  selector:
+    app: kibana
+    stack: logging
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kibana-internal-svc
+  namespace: elk
+  labels:
+    app: kibana-internal-svc
+    stack: logging
+spec:
+  type: ClusterIP
+  ports:
+  - name: "ui"
+    port: 5601
+    targetPort: 5601
+  selector:
+    app: kibana
+    stack: logging
+---

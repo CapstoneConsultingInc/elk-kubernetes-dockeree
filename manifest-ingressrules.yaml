@@ -1,23 +1,72 @@
+### Ingress rules for Nginx
+#---
+#---
+#apiVersion: extensions/v1beta1
+#kind: Ingress
+#metadata:
+#  name: kibana
+#  namespace: elk
+#  labels:
+#    app: kibana
+#    stack: logging
+#    app.kubernetes.io/name: ingress-nginx
+#    app.kubernetes.io/part-of: ingress-nginx
+#  annotations:
+#    kubernetes.io/ingress.class: nginx
+#    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+#spec:
+#  rules:
+#  - http:
+#      paths:
+#      - path: /
+#        backend:
+#          serviceName: kibana-internal-svc
+#          servicePort: 5601
+
+### Ingress rules for Istio
 ---
 ---
-apiVersion: extensions/v1beta1
-kind: Ingress
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
 metadata:
-  name: kibana
+  name: oreilly-ecom
   namespace: elk
-  labels:
-    app: kibana
-    stack: logging
-    app.kubernetes.io/name: ingress-nginx
-    app.kubernetes.io/part-of: ingress-nginx
-  annotations:
-    kubernetes.io/ingress.class: nginx
-    nginx.ingress.kubernetes.io/ssl-redirect: "false"
 spec:
-  rules:
-  - http:
-      paths:
-      - path: /
-        backend:
-          serviceName: kibana-internal-svc
-          servicePort: 5601
+  hosts:
+  - "ost-ucp-kibana.oreillyauto.com"
+  gateways:
+  - oreilly-kibana-gateway
+  http:
+  - match:
+    headers:
+      request:
+        set:
+          X-Forwarded-Proto: "https"
+      response:
+        set:
+          Content-Security-Policy: " default-src 'self' https://*.oreillyauto.com ; img-src 'self' data: https://*.oreillyauto.com https://*.google-analytics.com https://*.gstatic.com https://stats.g.doubleclick.net https://*.bluekai.com https://*.crwdcntrl.net https://*.googleapis.com https://*.googletagmanager.com https://www.facebook.com https://*.bazaarvoice.com https://oreilly.hosted.strongview.com https://img.youtube.com https://www.google.com https://*.twitter.com https://*.twimg.com https://optimize.google.com https://*.addthis.com https://*.rnengage.com https://oreillyauto.widget.custhelp.com https://oreillyauto.custhelp.com https://static.atgsvcs.com https://lpcdn.lpsnmedia.net https://cx.atdmt.com https://*.foresee.com https://p.univide.com https://beacon.krxd.net https://*.4see.mobi ; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.facebook.net https://*.google-analytics.com https://*.googleapis.com https://*.googletagmanager.com https://tagmanager.google.com https://*.agkn.com https://*.crwdcntrl.net https://*.shoplocal.com https://*.auruspay.com https://*.bazaarvoice.com https://*.facebook.com https://s3.amazonaws.com https://*.iesnare.com https://*.facebook.net https://*.surveymonkey.com https://platform.twitter.com https://cdn.syndication.twimg.com https://media.funmobility.com https://optimize.google.com https://c.go-mpulse.net https://*.atgsvcs.com https://*.custhelp.com https://*.addthis.com https://*.addthisedge.com https://*.rnengage.com https://apis.google.com https://*.rightnowtech.com https://static.atgsvcs.com https://*.foresee.com https://*.liveperson.net https://*.lpsnmedia.net ; connect-src 'self' https://*.rtbiq.com https://*.auruspay.com https://*.bazaarvoice.com https://c.go-mpulse.net https://*.akstat.io https://*.google-analytics.com https://rules.atgsvcs.com https://*.foresee.com wss://va.msg.liveperson.net https://*.objectstorage.liveperson.net ; font-src data: https://*.oreillyauto.com https://fonts.gstatic.com ; style-src 'self' 'unsafe-inline' https://*.googleapis.com https://*.bazaarvoice.com https://*.twitter.com https://tagmanager.google.com https://optimize.google.com https://*.twimg.com https://*.addthis.com https://*.widget.custhelp.com https://apis.google.com https://static.atgsvcs.com https://*.foresee.com ; frame-src 'self' https://*.googletagmanager.com https://*.custhelp.com https://*.crwdcntrl.net https://www.facebook.com https://connect.facebook.net https://staticxx.facebook.com https://*.bazaarvoice.com https://www.surveymonkey.com https://www.youtube.com https://open.spotify.com https://*.twitter.com https://oreillyautoparts.mobile-promotion.com https://optimize.google.com https://accounts.google.com https://*.estara.com https://*.lpsnmedia.net https://*.liveperson.net ; child-src 'self' https://*.googletagmanager.com https://oreillyauto.custhelp.com https://*.crwdcntrl.net https://www.facebook.com https://staticxx.facebook.com https://*.bazaarvoice.com https://www.surveymonkey.com https://www.youtube.com https://open.spotify.com https://*.twitter.com https://oreillyautoparts.mobile-promotion.com https://optimize.google.com https://accounts.google.com ; frame-ancestors 'self' https://optimize.google.com ; media-src 'self' https://lpcdn.lpsnmedia.net ; worker-src 'self' blob: https://*.oreillyauto.com ; "
+          X-Frame-Options: "DENY"
+          Strict-Transport-Security: "max-age=31536000 ; includeSubDomains"
+          X-XSS-Protection: "1; mode=block"
+          X-Content-Type-Options: "nosniff"
+    route:
+    - destination:
+        port:
+          number: 5601
+        host: kibana
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: Gateway
+metadata:
+  name: oreilly-kibana-gateway
+  namespace: elk
+spec:
+  selector:
+    istio: ingressgateway # use Istio default gateway implementation
+  servers:
+  - port:
+      number: 80
+      name: http
+      protocol: HTTP
+    hosts:
+    - "ost-ucp-kibana.oreillyauto.com"

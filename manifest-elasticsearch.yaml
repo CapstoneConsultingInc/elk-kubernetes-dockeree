@@ -173,7 +173,6 @@ metadata:
     app: elasticsearch
     stack: logging
 spec:
-  storageClassName: nfs
   accessModes:
   - ReadWriteMany
   resources:
